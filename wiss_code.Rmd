@@ -1,0 +1,202 @@
+---
+title: "Data Analysis"
+author: "Wisdom"
+date: "2023-04-09"
+output:
+  pdf_document: default
+  word_document: default
+---
+```{r}
+my_dataset <- read.csv('new.csv', fileEncoding = 'latin1')
+```
+
+
+```{r warning=FALSE}
+library(vtable)
+library(magrittr)
+library(dplyr)
+library(stargazer)
+library(ggrepel)
+library(tidyverse)
+library(ggtext) 
+my_dataset <- my_dataset %>%
+  select(-c(1:5,16))
+my_dataset <- na.omit(my_dataset)
+
+#my_dataset$tradeTime <- as.numeric(my_dataset$tradeTime)
+my_dataset$followers <- as.numeric(my_dataset$followers)
+my_dataset$price <- as.numeric(my_dataset$price)
+my_dataset$livingRoom <- as.numeric(my_dataset$livingRoom)
+my_dataset$drawingRoom <- as.numeric(my_dataset$drawingRoom)
+my_dataset$kitchen <- as.numeric(my_dataset$kitchen)
+my_dataset$bathRoom <- as.numeric(my_dataset$bathRoom)
+my_dataset$constructionTime <- as.numeric(my_dataset$constructionTime)
+my_dataset$renovationCondition <- as.numeric(my_dataset$renovationCondition)
+my_dataset$buildingStructure <- as.numeric(my_dataset$buildingStructure)
+my_dataset$district <- as.numeric(my_dataset$district)
+
+```
+
+
+#Renaming variables
+```{r}
+colnames(my_dataset)
+my_dataset <-my_dataset %>%
+  rename(
+    'Trade Time' = tradeTime,
+    'Total Price' = totalPrice,
+    'Living Room' = livingRoom,
+    'Drawing Room' = drawingRoom,
+    'Bath Room' = bathRoom,
+    'Building Type' = buildingType,
+    'Construction Time' = constructionTime,
+    'Renovation Condition' = renovationCondition,
+    'Building Structure' = buildingStructure,
+    'Ladder Ratio' = ladderRatio,
+    'Five Years Property' = fiveYearsProperty,
+    'Community Average' = communityAverage,
+    'Kitchen' = kitchen,
+    'Price' = price,
+    'Followers' = followers,
+    'Square' = square,
+    'Elevator' =elevator,
+    'Subway' = subway,
+    'District' = district
+  )
+```
+
+
+```{r}
+top_features <- my_dataset[,2:11] # for correlation
+str(top_features)
+
+
+library(ggplot2)
+library(reshape2)
+dt <- melt(cor(top_features, use="p"))
+dt$value <- trunc(dt$value*10^2)/10^2
+heat1 <- ggplot(data = dt, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() +
+  geom_text(aes(Var2, Var1, label = value), size = 5) +
+  scale_fill_gradient2(low = "red", high = "green",
+                       limit = c(-1,1), name="Correlation") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.background = element_blank())
+
+png(file = "Correlation_heatmap.png")
+heat1 + theme(axis.title = element_blank()) 
+```
+
+
+
+```{r}
+#summary statistics
+sum_data <- top_features[,3:10]
+
+```
+
+
+```{r}
+library(tidyr)
+sum_dt <- sum_data %>%
+  pivot_longer(names_to = 'House rooms', values_to = 'Total rooms',cols = -c(`Total Price`,Square,Price,`Building Type`))
+```
+
+```{r}
+# Plot the chart.
+set.seed(1234)
+data <- sum_dt %>% mutate(`Building Type` = case_when(
+  `Building Type` == 1 ~ "Tower",
+  `Building Type` == 2 ~ "Bungalow",
+  `Building Type` == 3 ~ "Combination",
+  `Building Type` == 4 ~ "Plate",
+  TRUE ~ as.character(`Building Type`)
+  ))
+
+top_feat <- data %>% sample_n(1000)
+top_feat <- data
+
+graph2 <-top_feat %>%
+  ggplot(aes(x= `Building Type`, y = `Total Price`, fill = 'none'))+
+  geom_col()
+  
+
+options(scipen = 999)
+library(scales)
+png(file = " Prices per square and total rooms.png")
+graph2 + theme(legend.position = 'none') +
+  labs(x = 'Building Types', y = 'Total Price')+
+  scale_y_continuous(labels = function(`Total Price`) paste0("$", format(`Total Price`, big.mark = ",")))+
+    theme(plot.title = element_markdown(face = "bold", size = rel(1.6)),
+        plot.subtitle = element_markdown(size = rel(1.3)),
+        plot.margin = unit(c(0.5, 1, 0.5, 0.5), units = "lines"))
+
+ggsave("Building_Type.pdf", graph2,
+       width = 8, height = 5, units = "in", device = cairo_pdf)
+```
+
+#House price based on number of rooms
+```{r}
+
+top_feat$`Total rooms` <- as.factor(top_feat$`Total rooms`)
+graph3 <- top_feat %>% 
+  ggplot(aes(x= Price, color = `Total rooms`))+geom_density()+
+  labs(title = 'Total House price based on number of rooms', y = 'price rise')
+
+
+graph_3 <- graph3 + labs(x ='Range of price per square(metre)', y = 'House price fluctuations' ) + theme(legend.position = 'right')
+
+options(scipen = 999)
+library(scales)
+png(file = "Total Rooms influence on Price.png")
+graph_3
+```
+
+```{r}
+
+str(top_feat)
+top_feat$Building_type <- with(top_feat, ifelse(top_feat$`Building Type` == 1,'tower',
+                                                ifelse(top_feat$`Building Type` == 2,'bungalow',
+                                                       ifelse(top_feat$`Building Type` == 3, 'plate & tower','plate'))))
+
+top_feat
+ 
+graph4 <-top_feat %>% 
+  ggplot(aes(x= `Building Type`, y = `Total Price`))+
+  geom_col()+
+  ggtitle('Building type based on price')
+
+graph_4 <- graph4 + theme(legend.position = 'none')
+
+options(scipen = 999)
+library(scales)
+png(file = "Building type based on price.png")
+graph_4 
+```
+
+```{r}
+#linear regression
+LN_regression <- lm(top_features$Price~top_features$Square)
+
+LN_regression2 <- lm(top_features$Price~top_features$`Building Type`)
+
+LN_reg3 <- lm(top_features$Price~top_features$Square+top_features$`Building Type`)
+LN_reg4 <- lm(top_features$Price~top_features$Square+top_features$Kitchen+top_features$`Building Type`+top_features$`Drawing Room`+top_features$`Living Room`+top_features$`Bath Room`+top_features$DOM)
+stargazer(LN_regression,LN_regression2,LN_reg3,LN_reg4, type= 'text', out = 'Regression table')
+```
+
+
+```{r}
+summary_table <- sumtable(sum_data,
+        summ = c('mean(x)',
+                 'sd(x)','min(x)',
+                 'max(x)'),
+        title = 'Summary Statistics House Prices',
+        out = 'return')
+
+summary_table
+```
+
+
+
